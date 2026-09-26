@@ -1,39 +1,35 @@
-import type { Grade } from "./scoring";
 export class NukaAudio {
   private context: AudioContext | null = null;
   muted = false;
   unlock() {
     this.context ??= new AudioContext();
-    if (this.context.state === "suspended") void this.context.resume();
+    if (this.context.state === "suspended") void this.context.resume().catch(() => {});
   }
-  hit(grade: Grade, combo: number) {
-    if (this.muted) return;
-    this.unlock();
-    const ctx = this.context!, now = ctx.currentTime;
-    const master = ctx.createGain(); master.gain.value = 0.35; master.connect(ctx.destination);
-    const thud = ctx.createOscillator(), envelope = ctx.createGain();
-    thud.frequency.setValueAtTime(grade === "soft" ? 135 : 205, now);
-    thud.frequency.exponentialRampToValueAtTime(48, now + 0.10);
-    envelope.gain.setValueAtTime(0.6, now); envelope.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-    thud.connect(envelope).connect(master); thud.start(now); thud.stop(now + 0.16);
-    const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.15), ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.024));
-    const noise = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), ng = ctx.createGain();
-    noise.buffer = buffer; filter.type = "lowpass"; filter.frequency.value = 1800; ng.gain.value = 0.18;
-    noise.connect(filter).connect(ng).connect(master); noise.start(now);
-    if (grade !== "soft") {
-      const notes = [523.25, 587.33, 659.25, 783.99, 880, 1046.5];
-      const base = notes[Math.floor(combo / 3) % notes.length];
-      (grade === "perfect" ? [1, 2, 3.01] : [1, 2]).forEach((ratio, index) => {
-        const oscillator = ctx.createOscillator(), gain = ctx.createGain();
-        oscillator.type = "sine"; oscillator.frequency.value = base * ratio;
-        gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.25 / (index + 1), now + 0.006);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + (grade === "perfect" ? 0.75 : 0.38) / (index + 1));
-        oscillator.connect(gain).connect(master); oscillator.start(now); oscillator.stop(now + 0.85);
-      });
-    }
-    setTimeout(() => master.disconnect(), 1100);
+  insert() {
+    if (this.muted || !this.context || this.context.state !== "running") return;
+    const ctx = this.context, now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.23, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    gain.connect(ctx.destination);
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.55), ctx.sampleRate);
+    const samples = buffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+    const noise = ctx.createBufferSource(); noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter(); filter.type = "lowpass";
+    filter.frequency.setValueAtTime(1500 + Math.random() * 500, now);
+    filter.frequency.exponentialRampToValueAtTime(140, now + 0.48);
+    filter.Q.value = 1.8;
+    noise.connect(filter); filter.connect(gain); noise.start(now);
+    const tone = ctx.createOscillator(), volume = ctx.createGain();
+    tone.type = "sine";
+    tone.frequency.setValueAtTime(320 + Math.random() * 70, now);
+    tone.frequency.exponentialRampToValueAtTime(65, now + 0.24);
+    volume.gain.setValueAtTime(0.14, now);
+    volume.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    tone.connect(volume); volume.connect(ctx.destination); tone.start(now); tone.stop(now + 0.36);
+    noise.onended = () => { noise.disconnect(); filter.disconnect(); gain.disconnect(); };
+    tone.onended = () => { tone.disconnect(); volume.disconnect(); };
   }
   dispose() {
     if (this.context && this.context.state !== "closed") void this.context.close().catch(() => {});

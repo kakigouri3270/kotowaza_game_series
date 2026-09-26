@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "糠に釘 | ことわざ遊戯",
-  description: "ただただ糠に釘を打つ3Dリズムゲーム。ぴったりの一打で、澄んだ音と連続ボーナス。60秒の記録をランキングへ。",
+  description: "小さな部屋を一人称で歩いて、好きな場所へ糠に釘を刺す3Dゲーム。ぬるっと沈む釘を、ただ眺める自由なひととき。",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
