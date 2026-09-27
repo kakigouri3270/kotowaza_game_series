@@ -1,11 +1,13 @@
 import * as THREE from "three";
-import { BRAN_X, BRAN_Y, BRAN_Z, PLAYER_START, canPlaceNail, movePlayer, nailDepth } from "./nuka-physics";
+import { BRAN_X, BRAN_Y, BRAN_Z, PLAYER_START, STATIONS, canPlaceNail, movePlayer, nailDepth, newProgress, recordNail, stationAt, type Progress, type StationId } from "./nuka-physics";
 
 export type NukaState = {
   active: boolean; aimed: boolean;
   target: { x: number; z: number } | null;
   player: { x: number; z: number; yaw: number; pitch: number };
   visibleNails: number;
+  progress: Progress;
+  station: StationId | null;
   nails: { x: number; z: number; depth: number }[];
 };
 export type NukaScene = {
@@ -13,7 +15,7 @@ export type NukaScene = {
   setKey(code: string, pressed: boolean): void;
   setTouchMove(x: number, y: number): void;
   look(dx: number, dy: number): void;
-  insert(): boolean;
+  insert(): StationId | null;
   resetPlayer(): void;
   getState(): NukaState;
   dispose(): void;
@@ -22,8 +24,8 @@ export type NukaScene = {
 export function createNukaScene(host: HTMLElement, onState: (state: NukaState) => void): NukaScene {
   const world = new THREE.Scene();
   world.background = new THREE.Color("#b6b2a0");
-  world.fog = new THREE.Fog("#c5c0aa", 8, 18);
-  const camera = new THREE.PerspectiveCamera(62, 1, 0.025, 35);
+  world.fog = new THREE.Fog("#c5c0aa", 19, 38);
+  const camera = new THREE.PerspectiveCamera(62, 1, 0.025, 50);
   camera.rotation.order = "YXZ";
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.7));
@@ -74,67 +76,96 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
     return mesh(new THREE.CylinderGeometry(rt, rb, height, segments), mat, parent);
   }
   world.add(new THREE.HemisphereLight("#fff2d4", "#52625d", 2.4));
-  const sun = new THREE.DirectionalLight("#ffdfac", 3.6); sun.position.set(-3, 5.8, -2.3);
+  const sun = new THREE.DirectionalLight("#ffdfac", 3.6); sun.position.set(-8, 12, -6);
   sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 0.1, far: 16 });
+  Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 13, bottom: -13, near: 0.1, far: 38 });
   sun.shadow.normalBias = 0.02; sun.shadow.bias = -0.0003; world.add(sun);
   const fill = new THREE.PointLight("#fff0d1", 8, 8); fill.position.set(2.5, 2.5, 1); world.add(fill);
 
-  // A small, navigable workshop with a low, generously filled bran tray.
-  box(0, -0.11, 0, 8, 0.2, 8, floorMat);
-  for (let i = -7; i <= 7; i++) box(i * 0.55, -0.005, 0, 0.008, 0.005, 8, darkWood);
-  box(0, 1.7, -4, 8.1, 3.4, 0.16, plaster);
-  box(-4, 1.7, 0, 0.16, 3.4, 8, plaster);
-  box(4, 1.7, 0, 0.16, 3.4, 8, plaster);
-  box(0, 1.7, 4, 8, 3.4, 0.16, plaster);
-  for (const x of [-3.9, 0, 3.9]) box(x, 1.7, -3.88, 0.13, 3.4, 0.16, darkWood);
-  for (const z of [-3.9, 0, 3.9]) box(-3.88, 1.7, z, 0.16, 3.4, 0.13, darkWood);
-  for (const y of [0.14, 3.15]) {
-    box(0, y, -3.85, 8, 0.16, 0.14, darkWood);
-    box(-3.85, y, 0, 0.14, 0.16, 8, darkWood);
-    box(3.85, y, 0, 0.14, 0.16, 8, darkWood);
-    box(0, y, 3.85, 8, 0.16, 0.14, darkWood);
+  // A spacious workshop: three textures of bran, joined by clear walking routes.
+  box(0, -0.11, 0, 20, 0.2, 18, floorMat);
+  for (let i = -18; i <= 18; i++) box(i * 0.55, -0.005, 0, 0.008, 0.005, 18, darkWood);
+  box(0, 2, -9, 20.1, 4, 0.16, plaster);
+  box(-10, 2, 0, 0.16, 4, 18, plaster);
+  box(10, 2, 0, 0.16, 4, 18, plaster);
+  box(0, 2, 9, 20, 4, 0.16, plaster);
+  for (const x of [-9.9, -5, 0, 5, 9.9]) {
+    box(x, 2, -8.88, 0.13, 4, 0.16, darkWood);
+    box(x, 2, 8.88, 0.13, 4, 0.16, darkWood);
   }
-  const paper = material("#ece9ce"); paper.emissive.set("#ffe9b3"); paper.emissiveIntensity = 0.38;
-  box(-3.88, 2.05, -1.1, 0.04, 1.6, 3.6, paper);
-  for (let z = -2.9; z <= 0.8; z += 0.45) box(-3.83, 2.05, z, 0.07, 1.7, 0.035, darkWood);
-  for (const y of [1.22, 1.78, 2.32, 2.88]) box(-3.83, y, -1.1, 0.07, 0.04, 3.7, darkWood);
-  const signCanvas = document.createElement("canvas"); signCanvas.width = 256; signCanvas.height = 512;
-  const signCtx = signCanvas.getContext("2d")!; signCtx.fillStyle = "#d8cfad"; signCtx.fillRect(0, 0, 256, 512);
-  signCtx.fillStyle = "#424839"; signCtx.font = "62px serif"; signCtx.textAlign = "center";
-  ["手", "応", "え", "無", "用"].forEach((s, i) => signCtx.fillText(s, 128, 99 + i * 78));
-  const signMap = new THREE.CanvasTexture(signCanvas); signMap.colorSpace = THREE.SRGBColorSpace; textures.push(signMap);
-  const signMat = material("#ffffff"); signMat.map = signMap;
-  box(1.55, 2.1, -3.86, 0.64, 1.34, 0.045, darkWood);
-  box(1.55, 2.1, -3.82, 0.56, 1.25, 0.035, signMat);
-  box(-1.65, 0.84, -3.48, 2.4, 0.09, 0.62);
-  for (const x of [-2.65, -0.65]) box(x, 0.42, -3.48, 0.1, 0.82, 0.43, darkWood);
-  for (let i = 0; i < 3; i++) {
-    const jar = cylinder(0.16, 0.2, 0.38 + i * 0.035, ceramic); jar.position.set(-2.4 + i * 0.65, 1.08, -3.48);
-    const lid = cylinder(0.18, 0.16, 0.06, darkWood); lid.position.set(jar.position.x, 1.29 + i * 0.018, -3.48);
+  for (const z of [-8.9, -4.5, 0, 4.5, 8.9]) {
+    box(-9.88, 2, z, 0.16, 4, 0.13, darkWood);
+    box(9.88, 2, z, 0.16, 4, 0.13, darkWood);
   }
-  box(2.5, 0.3, -3.35, 1, 0.6, 0.85, wood);
-  box(2.5, 0.65, -3.35, 0.88, 0.09, 0.73, cloth);
-  box(0, 0.66, 0, 3.15, 0.16, 2.12, wood);
-  for (const x of [-1.28, 1.28]) for (const z of [-0.78, 0.78]) box(x, 0.28, z, 0.17, 0.59, 0.17, darkWood);
-  box(0, 0.82, 0, 2.8, 0.2, 1.8, wood);
-  box(0, 0.91, 0, BRAN_X * 2, 0.16, BRAN_Z * 2, branMat);
+  for (const y of [0.14, 3.75]) {
+    box(0, y, -8.85, 20, 0.16, 0.14, darkWood);
+    box(-9.85, y, 0, 0.14, 0.16, 18, darkWood);
+    box(9.85, y, 0, 0.14, 0.16, 18, darkWood);
+    box(0, y, 8.85, 20, 0.16, 0.14, darkWood);
+  }
+  for (const z of [-6, 0, 6]) box(0, 3.85, z, 20, 0.18, 0.22, darkWood);
+  const paper = material("#ece9ce"); paper.emissive.set("#ffe9b3"); paper.emissiveIntensity = 0.45;
+  for (const centerZ of [-5, 0, 5]) {
+    box(-9.88, 2.2, centerZ, 0.04, 2.2, 3.6, paper);
+    for (let z = -1.8; z <= 1.81; z += 0.45) box(-9.83, 2.2, centerZ + z, 0.07, 2.3, 0.035, darkWood);
+    for (const y of [1.06, 1.62, 2.18, 2.74, 3.32]) box(-9.83, y, centerZ, 0.07, 0.04, 3.7, darkWood);
+  }
+  function label(text: string, sub: string, accent: string) {
+    const canvas = document.createElement("canvas"); canvas.width = 768; canvas.height = 240;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#263930"; ctx.fillRect(0, 0, 768, 240);
+    ctx.fillStyle = accent; ctx.fillRect(0, 0, 12, 240);
+    ctx.textAlign = "center"; ctx.fillStyle = "#f5edda"; ctx.font = "54px serif"; ctx.fillText(text, 390, 104);
+    ctx.fillStyle = accent; ctx.font = "27px sans-serif"; ctx.fillText(sub, 390, 178);
+    const map = new THREE.CanvasTexture(canvas); map.colorSpace = THREE.SRGBColorSpace; textures.push(map);
+    const mat = material("#ffffff"); mat.map = map; return mat;
+  }
+  box(0, 2.5, -8.83, 4.5, 1.4, 0.08, label("糠の回廊", "三つの手触り、手応えはゼロ。", "#e6c58e"));
+  for (const side of [-1, 1]) {
+    box(side * 6.6, 0.8, -8.2, 4.1, 0.12, 0.8);
+    for (const offset of [-1.7, 1.7]) box(side * 6.6 + offset, 0.38, -8.2, 0.12, 0.75, 0.55, darkWood);
+    for (let i = 0; i < 5; i++) {
+      const jar = cylinder(0.16, 0.23, 0.46, ceramic); jar.position.set(side * 6.6 + (i - 2) * 0.7, 1.06, -8.2);
+      const lid = cylinder(0.18, 0.17, 0.06, darkWood); lid.position.set(jar.position.x, 1.32, -8.2);
+    }
+  }
+  const pathMat = material("#829087");
+  for (const side of [-1, 1]) for (let i = 0; i < 8; i++) {
+    const stone = cylinder(0.22, 0.23, 0.014, pathMat, world, 12);
+    stone.position.set(side * (1.1 + i * 0.58), 0.004, 2.3 - i * 0.53);
+  }
   const rims: THREE.Mesh[] = [];
-  for (const x of [-1.37, 1.37]) rims.push(box(x, 0.94, 0, 0.16, 0.3, 1.92));
-  for (const z of [-0.88, 0.88]) rims.push(box(0, 0.94, z, 2.74, 0.3, 0.16));
-  for (const x of [-1.37, 1.37]) for (const z of [-0.87, 0.87]) {
-    const peg = cylinder(0.022, 0.022, 0.012, darkIron, world, 10); peg.position.set(x, 1.095, z);
-  }
+  const grains: THREE.InstancedMesh[] = [];
+  const stationMaterials = new Map<StationId, THREE.MeshStandardMaterial>();
   const grainGeo = new THREE.IcosahedronGeometry(0.0055, 0); geometries.add(grainGeo);
-  const grains = new THREE.InstancedMesh(grainGeo, branMat, 5000); grains.receiveShadow = true;
   const dummy = new THREE.Object3D(), tint = new THREE.Color();
-  for (let i = 0; i < grains.count; i++) {
-    dummy.position.set((Math.random() * 2 - 1) * (BRAN_X - 0.01), BRAN_Y + Math.random() * 0.012, (Math.random() * 2 - 1) * (BRAN_Z - 0.01));
-    dummy.rotation.set(Math.random() * 3, Math.random() * 6, Math.random());
-    dummy.scale.set(1, 0.4 + Math.random() * 0.45, 0.5 + Math.random() * 0.7); dummy.updateMatrix();
-    grains.setMatrixAt(i, dummy.matrix); grains.setColorAt(i, tint.setHSL(0.105, 0.23 + Math.random() * 0.2, 0.56 + Math.random() * 0.3));
+  for (const station of STATIONS) {
+    const group = new THREE.Group(); group.position.set(station.x, 0, station.z); world.add(group);
+    const bran = material(station.color); bran.map = branMat.map; bran.bumpMap = branMat.map; bran.bumpScale = station.id === "sticky" ? 0.025 : 0.012;
+    if (station.id === "sticky") bran.roughness = 0.4;
+    stationMaterials.set(station.id, bran);
+    box(0, 0.66, 0, 3.15, 0.16, 2.12, wood, group);
+    for (const x of [-1.28, 1.28]) for (const z of [-0.78, 0.78]) box(x, 0.28, z, 0.17, 0.59, 0.17, darkWood, group);
+    box(0, 0.82, 0, 2.8, 0.2, 1.8, wood, group);
+    box(0, 0.91, 0, BRAN_X * 2, 0.16, BRAN_Z * 2, bran, group);
+    for (const x of [-1.37, 1.37]) rims.push(box(x, 0.94, 0, 0.16, 0.3, 1.92, wood, group));
+    for (const z of [-0.88, 0.88]) rims.push(box(0, 0.94, z, 2.74, 0.3, 0.16, wood, group));
+    for (const x of [-1.37, 1.37]) for (const z of [-0.87, 0.87]) {
+      const peg = cylinder(0.022, 0.022, 0.012, darkIron, group, 10); peg.position.set(x, 1.095, z);
+    }
+    const accent = material(station.accent);
+    box(0, 0.81, 0.99, 2.2, 0.055, 0.025, accent, group);
+    box(0, 1.1, -1.09, 0.07, 0.9, 0.07, darkWood, group);
+    box(0, 1.8, -1.02, 1.7, 0.53, 0.065, label(station.number + "  " + station.name, station.description, station.accent), group);
+    const grain = new THREE.InstancedMesh(grainGeo, bran, 3200); grain.receiveShadow = true;
+    for (let i = 0; i < grain.count; i++) {
+      dummy.position.set((Math.random() * 2 - 1) * (BRAN_X - 0.01), BRAN_Y + Math.random() * 0.006, (Math.random() * 2 - 1) * (BRAN_Z - 0.01));
+      dummy.rotation.set(Math.random() * 3, Math.random() * 6, Math.random());
+      dummy.scale.set(1, 0.4 + Math.random() * 0.45, 0.5 + Math.random() * 0.7); dummy.updateMatrix();
+      grain.setMatrixAt(i, dummy.matrix); grain.setColorAt(i, tint.setHSL(0.105, 0.23 + Math.random() * 0.2, 0.56 + Math.random() * 0.3));
+    }
+    group.add(grain); grains.push(grain);
   }
-  world.add(grains);
   const shaftGeo = new THREE.CylinderGeometry(0.012, 0.011, 0.41, 10), headGeo = new THREE.CylinderGeometry(0.042, 0.038, 0.025, 16), tipGeo = new THREE.ConeGeometry(0.011, 0.075, 10);
   function makeNail(parent: THREE.Object3D) {
     const group = new THREE.Group(); parent.add(group);
@@ -159,6 +190,7 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
   const nails: Nail[] = [];
   const haloGeo = new THREE.RingGeometry(0.016, 0.04, 24); geometries.add(haloGeo);
   const scatterGeo = new THREE.IcosahedronGeometry(0.014, 0); geometries.add(scatterGeo);
+  let progress = newProgress();
   let player = { ...PLAYER_START }, active = false, started = false, time = 0, lastInsert = -10, frame = 0, disposed = false;
   let previousTime = performance.now(), lastState = -1, walkTime = 0, touchX = 0, touchY = 0;
   const keyStarted = new Map<string, number>(), keyRelease = new Map<string, number>();
@@ -180,20 +212,23 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
     if (target) marker.position.set(target.x, BRAN_Y + 0.022, target.z);
   }
   function getState(): NukaState {
-    return { active, aimed: !!target, target: target ? { x: +target.x.toFixed(3), z: +target.z.toFixed(3) } : null, player: { ...player }, visibleNails: nails.filter(n => n.group.position.y + 0.47 > BRAN_Y).length, nails: nails.map(n => ({ x: +n.group.position.x.toFixed(3), z: +n.group.position.z.toFixed(3), depth: +(BRAN_Y - n.group.position.y).toFixed(3) })) };
+    return { active, aimed: !!target, progress, station: target ? stationAt(target.x, target.z)?.id ?? null : null, target: target ? { x: +target.x.toFixed(3), z: +target.z.toFixed(3) } : null, player: { ...player }, visibleNails: nails.filter(n => n.group.position.y + 0.47 > BRAN_Y).length, nails: nails.map(n => ({ x: +n.group.position.x.toFixed(3), z: +n.group.position.z.toFixed(3), depth: +(BRAN_Y - n.group.position.y).toFixed(3) })) };
   }
   function removeNail(n: Nail) { world.remove(n.group, n.halo, n.particles); n.haloMat.dispose(); materials.delete(n.haloMat); n.particles.dispose(); }
   function insert() {
     updateAim();
-    if (!active || !target || time - lastInsert < 0.12) return false;
+    if (!active || !target || time - lastInsert < 0.12) return null;
+    const station = stationAt(target.x, target.z);
+    if (!station) return null;
+    progress = recordNail(progress, station.id);
     lastInsert = time;
     const group = makeNail(world); group.position.copy(target); group.position.y -= 0.1;
     const haloMat = new THREE.MeshBasicMaterial({ color: "#826440", transparent: true, opacity: 0.4, depthWrite: false });
     const halo = mesh(haloGeo, haloMat); halo.rotation.x = -Math.PI / 2; halo.position.copy(target); halo.position.y += 0.018; halo.castShadow = false;
-    const particles = new THREE.InstancedMesh(scatterGeo, branMat, 12); particles.position.copy(target); world.add(particles);
-    nails.push({ group, halo, haloMat, particles, born: time, duration: 4.8 + Math.random() * 1.6, tiltX: (Math.random() - 0.5) * 0.34, tiltZ: (Math.random() - 0.5) * 0.34, phase: Math.random() * Math.PI * 2 });
+    const particles = new THREE.InstancedMesh(scatterGeo, stationMaterials.get(station.id)!, 12); particles.position.copy(target); world.add(particles);
+    nails.push({ group, halo, haloMat, particles, born: time, duration: station.duration * (0.9 + Math.random() * 0.2), tiltX: (Math.random() - 0.5) * 0.34, tiltZ: (Math.random() - 0.5) * 0.34, phase: Math.random() * Math.PI * 2 });
     if (nails.length > 72) removeNail(nails.shift()!);
-    onState(getState()); return true;
+    onState(getState()); return station.id;
   }
   function resize() {
     const width = host.clientWidth, height = host.clientHeight;
@@ -212,7 +247,7 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
       let sideways = Number(keys.has("KeyD")) - Number(keys.has("KeyA")) + touchX;
       const magnitude = Math.hypot(forward, sideways);
       if (magnitude > 1) { forward /= magnitude; sideways /= magnitude; }
-      const step = dt * 1.55;
+      const step = dt * (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 3.4 : 2.05);
       const next = movePlayer(player, (-Math.sin(player.yaw) * forward + Math.cos(player.yaw) * sideways) * step, (-Math.cos(player.yaw) * forward - Math.sin(player.yaw) * sideways) * step);
       const moved = Math.hypot(next.x - player.x, next.z - player.z); walkTime += moved * 7;
       Object.assign(player, next);
@@ -239,7 +274,7 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
         if (age > n.duration + 0.25) { removeNail(n); nails.splice(i, 1); }
       }
     } else if (!started) {
-      camera.position.set(2.75, 2.45, 3.6); camera.lookAt(0, 0.83, -0.05);
+      camera.position.set(7.6, 4.2, 7); camera.lookAt(0, 0.65, -2.3);
     }
     updateAim();
     if (now - lastState > 100) { onState(getState()); lastState = now; }
@@ -260,6 +295,6 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
     insert,
     resetPlayer() { player = { ...PLAYER_START }; keys.clear(); keyStarted.clear(); keyRelease.clear(); touchX = touchY = 0; },
     getState,
-    dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose()); grains.dispose(); nails.forEach(n => n.particles.dispose()); renderer.dispose(); renderer.domElement.remove(); },
+    dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose()); grains.forEach(g => g.dispose()); nails.forEach(n => n.particles.dispose()); renderer.dispose(); renderer.domElement.remove(); },
   };
 }
