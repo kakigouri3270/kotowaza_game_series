@@ -2,7 +2,11 @@
 
 一人称で広い「糠の回廊」を歩き、好きな場所へ釘を刺す3Dブラウザーゲーム。2026-09-27更新。
 
-Cloudflareの無料の静的配信向けに、ログイン不要の一般公開ビルドを用意した。アカウント認証後に公開URLをここへ記載する。
+**一般公開URL：[糠に釘で遊ぶ](https://kotowaza-nuka-ni-kugi.kakigouri3270.workers.dev)**
+
+Cloudflareの無料の静的配信を使用。ログイン不要で遊べる。
+
+GitHub：[kakigouri3270/kotowaza_game_series](https://github.com/kakigouri3270/kotowaza_game_series)
 
 既存の本人限定プレビュー：https://nuka-ni-kugi.kakigoori2000.chatgpt.site
 

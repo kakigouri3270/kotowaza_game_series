@@ -1,5 +1,9 @@
 # Cloudflareで一般公開する
 
+公開URL：https://kotowaza-nuka-ni-kugi.kakigouri3270.workers.dev
+
+2026-09-27に一般公開。初回公開時のWorker versionは `990e9755-f6c5-470e-84df-165cfce12802`。
+
 現在のゲームはクライアントだけで動作するため、Cloudflare Workers Static Assetsへ静的ファイルだけを配信する。サーバーコード、D1、R2、有料プラン、独自ドメインは不要。公開URLはデプロイ時に表示される `workers.dev` ドメインを使用する。
 
 Cloudflare公式の[料金・制限](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)では、静的アセットへのリクエストは無料・無制限。無料プランのファイル数などの制限は適用される。今回の設定にはWorkerの `main` がなく、サーバー処理へのリクエストを発生させない。
@@ -25,6 +29,8 @@ npm run deploy:cloudflare
 ```
 
 ブラウザーに表示されるCloudflare公式画面でログインする。トークンをソースやGitへ保存しない。複数アカウントがある場合は対象を選択してから公開する。`wrangler.public.jsonc` の `name` が公開するアプリ名で、既存の別アプリと同名にしない。
+
+認証後に `localhost:8976` で接続拒否になる場合は、CLIの認証待機が期限切れになっていないか確認する。`wrangler login` を再実行し、表示された新しい認証画面で完了する。古いコールバックURLは再利用しない。
 
 ## 構成
 
