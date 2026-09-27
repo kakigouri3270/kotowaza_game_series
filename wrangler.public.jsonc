@@ -1,11 +1,16 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "kotowaza-nuka-ni-kugi",
+  "main": "worker/index.ts",
   "compatibility_date": "2026-09-27",
   "workers_dev": true,
   "preview_urls": false,
   "assets": {
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
     "directory": "./public-dist",
     "not_found_handling": "none"
-  }
+  },
+  "durable_objects": { "bindings": [{ "name": "LEADERBOARD", "class_name": "NukaLeaderboard" }] },
+  "migrations": [{ "tag": "nuka-leaderboard-v1", "new_sqlite_classes": ["NukaLeaderboard"] }]
 }

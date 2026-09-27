@@ -9,7 +9,7 @@
     "public:dev": "vite --config vite.public.config.ts --host 127.0.0.1",
     "public:build": "vite build --config vite.public.config.ts",
     "public:preview": "vite preview --config vite.public.config.ts --host 127.0.0.1",
-    "test": "node --experimental-strip-types --test tests/nuka-physics.test.mjs",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "deploy:cloudflare": "npm run public:build && wrangler deploy --config wrangler.public.jsonc",
     "install:ci": "node scripts/install-ci.mjs",

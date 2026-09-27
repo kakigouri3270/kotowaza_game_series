@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Volume2, VolumeX, Pause, Move, MousePointer2, RotateCcw, Play, Loader2 } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Volume2, VolumeX, Pause, Move, MousePointer2, RotateCcw, Play, Loader2, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { createNukaScene, type NukaScene, type NukaState } from "@/lib/nuka-scene";
 import { NukaAudio } from "@/lib/nuka-audio";
 import { STATIONS, PLAYER_START, newProgress, type Progress, type StationId } from "@/lib/nuka-physics";
+import { NukaSave, SAVE_KEY, type SavedGame } from "@/lib/nuka-save";
+import { NukaRanking } from "@/components/nuka-ranking";
 
 export default function Home() {
   const mount = useRef<HTMLDivElement>(null), scene = useRef<NukaScene | null>(null), sound = useRef<NukaAudio | null>(null);
@@ -16,6 +18,9 @@ export default function Home() {
   const [inserted, setInserted] = useState(false);
   const [grounded, setGrounded] = useState(true);
   const [progress, setProgress] = useState<Progress>(newProgress);
+  const saveStore = useRef<NukaSave | null>(null);
+  const [saved, setSaved] = useState<SavedGame | null>(null), [saveStatus, setSaveStatus] = useState("記録を準備中…");
+  const [rankingOpen, setRankingOpen] = useState(false);
   const [station, setStation] = useState<StationId | null>(null);
   const [position, setPosition] = useState({ x: PLAYER_START.x, z: PLAYER_START.z, yaw: 0 });
   const [reaction, setReaction] = useState("すうっと、糠のなかへ。");
@@ -32,6 +37,7 @@ export default function Home() {
     if (!playingRef.current) return;
     const stationId = scene.current?.insert();
     if (!stationId) return;
+    void saveStore.current?.add(stationId);
     const place = STATIONS.find(s => s.id === stationId)!;
     const tally = scene.current!.getState().progress;
     const milestone = tally.byStation[stationId] === 10;
@@ -48,6 +54,7 @@ export default function Home() {
   function jump() {
     if (playingRef.current) scene.current?.jump();
   }
+  function openRanking() { pause(); setRankingOpen(true); }
   function enter(mode = lookMode.current) {
     if (!ready) return;
     lookMode.current = mode; audio(); setStarted(true); setPaused(false);
@@ -70,8 +77,22 @@ export default function Home() {
   const actions = useRef({ insert, pause, jump });
   useEffect(() => { actions.current = { insert, pause, jump }; });
   useEffect(() => {
+    let disposed = false;
+    const store = new NukaSave({ getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key), key: index => localStorage.key(index), get length() { return localStorage.length; } }, (value, status) => {
+      if (disposed) return;
+      setSaved(value); setSaveStatus(status);
+      if (scene.current) scene.current.restoreProgress(value.progress); else setProgress(value.progress);
+    }, async fn => navigator.locks ? await navigator.locks.request(SAVE_KEY, fn) : await fn());
+    saveStore.current = store;
+    const loaded = store.load();
+    const sync = () => { void store.sync(); };
+    const storageChanged = (event: StorageEvent) => { if (event.key === SAVE_KEY) void store.refresh(); };
+    const syncTimer = setInterval(sync, 15000);
+    window.addEventListener("online", sync); window.addEventListener("storage", storageChanged);
     // Let the introduction paint before creating the WebGL scene.
-    const setupFrame = requestAnimationFrame(() => {
+    const setupFrame = requestAnimationFrame(async () => {
+      await loaded;
+      if (disposed) return;
       try { const value = localStorage.getItem("nuka-muted") === "true"; setMuted(value); mutedRef.current = value; } catch {}
       try {
         scene.current = createNukaScene(mount.current!, (state: NukaState) => {
@@ -81,8 +102,9 @@ export default function Home() {
           if (stationRef.current !== state.station) { stationRef.current = state.station; setStation(state.station); }
           const key = [state.player.x, state.player.z, state.player.yaw].map(v => v.toFixed(2)).join(",");
           if (positionKey.current !== key) { positionKey.current = key; setPosition({ x: state.player.x, z: state.player.z, yaw: state.player.yaw }); }
-        });
+        }, store.current.progress);
         setReady(true);
+        sync();
       } catch (error) {
         console.error(error); setSceneError("3D画面を開けませんでした。WebGL対応のブラウザーでお試しください。");
       }
@@ -104,18 +126,21 @@ export default function Home() {
     };
     const lockError = () => { lookMode.current = "drag"; setLocked(false); lockedRef.current = false; };
     const loseFocus = () => actions.current.pause();
-    const visibility = () => { if (document.hidden) actions.current.pause(); };
+    const visibility = () => { if (document.hidden) { actions.current.pause(); sync(); } };
     window.addEventListener("keydown", keydown); window.addEventListener("keyup", keyup); window.addEventListener("blur", loseFocus);
     document.addEventListener("mousemove", pointer); document.addEventListener("pointerlockchange", lockChange);
     document.addEventListener("pointerlockerror", lockError); document.addEventListener("visibilitychange", visibility);
     return () => {
+      disposed = true;
+      clearInterval(syncTimer);
+      window.removeEventListener("online", sync); window.removeEventListener("storage", storageChanged);
       cancelAnimationFrame(setupFrame);
       window.removeEventListener("keydown", keydown); window.removeEventListener("keyup", keyup); window.removeEventListener("blur", loseFocus);
       document.removeEventListener("mousemove", pointer); document.removeEventListener("pointerlockchange", lockChange);
       document.removeEventListener("pointerlockerror", lockError); document.removeEventListener("visibilitychange", visibility);
       if (document.pointerLockElement) document.exitPointerLock();
       if (flashTimer.current) clearTimeout(flashTimer.current);
-      scene.current?.dispose(); sound.current?.dispose();
+      scene.current?.dispose(); scene.current = null; sound.current?.dispose();
     };
   }, []);
   useEffect(() => {
@@ -125,7 +150,7 @@ export default function Home() {
     const lifecycle = new AbortController();
     const tool = {
       name: "read_game_state", title: "現在の作業部屋の状態",
-      description: "糠の回廊の位置・ジャンプの高さと接地状態、狙っている糠場、今回刺した釘の累計、3か所それぞれの本数、沈んでいる釘を読み取る。ランキングはありません。",
+      description: "糠の回廊の位置・ジャンプの高さと接地状態、狙っている糠場、保存される累計本数、3か所それぞれの本数、沈んでいる釘を読み取る。保存用の秘密情報は返しません。",
       inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true },
       execute(input: unknown) {
         if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length) throw new Error("引数は空のオブジェクトにしてください。");
@@ -166,6 +191,7 @@ export default function Home() {
     <header className="masthead">
       <div className="brand"><span className="seal">無益</span><div><span className="eyebrow">ことわざ遊戯 ── 第一作</span><h1>糠に釘<span>NUKA NI KUGI</span></h1></div></div>
       <nav aria-label="ゲームの設定">
+        <Button variant="ghost" className="icon-button" onClick={openRanking} aria-label="累計ランキングTOP10" title="累計ランキングTOP10"><Trophy size={19}/></Button>
         <Button variant="ghost" className="icon-button" onClick={toggleSound} aria-label={muted ? "音を出す" : "音を消す"} title={muted ? "音を出す" : "音を消す"}>{muted ? <VolumeX/> : <Volume2/>}</Button>
         {started && <Button variant="ghost" className="menu-button" onClick={pause}><Pause size={16}/>ひと休み<kbd>ESC</kbd></Button>}
       </nav>
@@ -174,6 +200,7 @@ export default function Home() {
       <div className="chapter"><span/>自由に、無心に。</div>
       <h2>好きな場所に、一本。<br/>あとは、糠にまかせよう。</h2>
       <p>広い回廊を歩いて、三つの糠をめぐる。<br/>さらさら、ぬるぬる、ねばねば。<br/>まずは、それぞれに10本ずつ。</p>
+      <div className="welcome-record">これまでの累計 <strong>{progress.total.toLocaleString()}</strong> 本 <button onClick={openRanking}>TOP 10を見る <ArrowUpRight size={13}/></button></div>
       <Button className="enter-button" onClick={() => enter("mouse")} disabled={!ready}>{ready ? <>部屋に入る<ArrowUpRight size={20}/></> : <><Loader2 className="animate-spin"/>部屋を準備中…</>}</Button>
       <button className="drag-entry" onClick={() => enter("drag")} disabled={!ready}>ドラッグ操作で入る</button>
       <div className="intro-controls"><span><kbd>W A S D</kbd>歩く</span><span><kbd>SPACE</kbd>ジャンプ</span><span><MousePointer2 size={15}/>見回す・刺す</span></div>
@@ -181,8 +208,8 @@ export default function Home() {
     {sceneError && <div className="error-panel" role="alert"><p>{sceneError}</p><Button onClick={() => location.reload()}>再読み込み</Button></div>}
     {playing && <>
       <aside className="tally-hud" aria-label="釘の本数と糠場めぐり">
-        <span className="tally-label">今回刺した釘</span>
-        <div className="tally-number"><output aria-label="今回刺した釘の本数">{progress.total.toLocaleString()}</output><span>本</span></div>
+        <span className="tally-label">これまで刺した釘</span>
+        <div className="tally-number"><output aria-label="累計の釘の本数">{progress.total.toLocaleString()}</output><span>本</span></div>
         <div className="tour-heading">{completed === 3 ? "糠場めぐり、達成。" : "三つの糠に10本ずつ"}<span>{completed} / 3</span></div>
         <ul className="station-checklist">{STATIONS.map(s => <li key={s.id} className={(progress.byStation[s.id] >= 10 ? "done " : "") + (station === s.id ? "current" : "")}><span className="station-number" style={{ color: s.accent }}>{progress.byStation[s.id] >= 10 ? "✓" : s.number}</span><span>{s.name}</span><strong>{Math.min(10, progress.byStation[s.id])}<small> / 10</small></strong></li>)}</ul>
         {completed === 3 && <p className="tour-complete">あとは、心ゆくまで。</p>}
@@ -209,7 +236,8 @@ export default function Home() {
     </>}
     {!started && <footer className="intro-footer"><span>一人称の、無益なひととき。</span><span>01 / THE PROVERB PLAYROOM</span></footer>}
     {notice && <p className="notice" role="status">{notice}</p>}
-    <Dialog open={paused} onOpenChange={value => { if (!value) enter("drag"); }}>
+    <NukaRanking open={rankingOpen} onClose={() => setRankingOpen(false)} store={saveStore.current} saved={saved} status={saveStatus}/>
+    <Dialog open={paused && !rankingOpen} onOpenChange={value => { if (!value) enter("drag"); }}>
       <DialogContent className="game-dialog" showCloseButton={false} onCloseAutoFocus={event => event.preventDefault()}>
         <DialogHeader><span className="eyebrow">TAKE YOUR TIME</span><DialogTitle>釘も、ひと休み。</DialogTitle><DialogDescription>時間はたっぷり。自分のペースでどうぞ。</DialogDescription></DialogHeader>
         <div className="help-controls">
@@ -218,7 +246,9 @@ export default function Home() {
           <div><kbd>SPACE</kbd><span>ジャンプ。歩きながらも跳べます。</span></div>
           <div><kbd>E / クリック</kbd><span>中央の目印に釘を刺す。</span></div>
         </div>
-        <p className="help-note">地図の01・02・03の糠に10本ずつ刺してみましょう。沈む速さと音が違います。達成後も自由に遊べます。<br/>本数はこのプレイ中の累計です。釘が沈んでも、最初の位置に戻っても減りません。ページの再読み込みで0本に戻ります。<br/>スマートフォンは左の矢印で移動、画面をなぞって視点を動かし、右のボタンでジャンプ・釘刺し。着地するとまた跳べます。</p>
+        <p className="help-note">地図の01・02・03の糠に10本ずつ刺してみましょう。沈む速さと音が違います。達成後も自由に遊べます。<br/>累計本数と糠場めぐりの進捗は、このブラウザーに自動保存されます。釘が沈んでも、再読み込みしても引き継げます。<br/>スマートフォンは左の矢印で移動、画面をなぞって視点を動かし、右のボタンでジャンプ・釘刺し。着地するとまた跳べます。</p>
+        <p className="save-status" role="status">{saveStatus}</p>
+        <Button variant="outline" onClick={openRanking}><Trophy size={16}/>累計 TOP 10を見る</Button>
         <Button className="resume-button" onClick={() => enter()}><Play size={17}/>部屋に戻る</Button>
         <div className="pause-actions"><Button variant="outline" onClick={() => { scene.current?.resetPlayer(); enter("drag"); }}><RotateCcw size={16}/>糠の前に戻る</Button><Button variant="ghost" onClick={() => enter("drag")}>ドラッグ操作にする</Button></div>
       </DialogContent>

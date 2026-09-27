@@ -8,7 +8,7 @@
 
 **一般公開URL：[糠に釘で遊ぶ](https://kotowaza-nuka-ni-kugi.kakigouri3270.workers.dev)**
 
-Cloudflareの無料の静的配信を使用。ログイン不要で遊べる。
+Cloudflareの無料枠で配信。ログイン不要で遊べる。累計本数の自動保存と、全プレイヤー共通のTOP10に対応。
 
 GitHub：[kakigouri3270/kotowaza_game_series](https://github.com/kakigouri3270/kotowaza_game_series)
 
@@ -31,13 +31,22 @@ GitHub：[kakigouri3270/kotowaza_game_series](https://github.com/kakigouri3270/k
 
 ## 本数と糠場めぐり
 
-- 刺せた釘だけを「今回刺した釘」に累計する。釘が沈んでも、最初の位置へ戻っても減らない。
-- このプレイ中の記録で、ページを再読み込みすると0本に戻る。クラウド保存・ランキングはまだ追加していない。
+- 刺せた釘だけを「これまで刺した釘」に累計する。釘が沈んでも、最初の位置へ戻っても減らない。
+- 累計本数と各糠場の本数は同じブラウザーに自動保存。再読み込み・再訪でも引き継ぐ。ブラウザーのデータ削除、プライベートブラウジング終了、別端末への引き継ぎには対応しない。
 - ステージは20×18相当。以前の8×8から床面積を約5.6倍に拡大した。
 - 地図を頼りに「いつもの糠」「さらさら糠」「ねばねば糠」をめぐる。音色と沈む速さが異なる。
 - 各糠場へ10本ずつ刺すと「糠場めぐり」を達成。達成後も総数を増やしながら自由に遊べる。
 
-時間制限・タイミングバー・ランキングはない。ポイントとランキングの方法は後で追加する方針。
+時間制限・タイミングバー・別の採点はない。ランキングは純粋な累計本数を使用する。
+
+## 累計TOP10
+
+- 右上のトロフィー、開始画面、休憩メニューから開く。
+- 公開サイト全体で累計本数が多い順に最大10人。同数は先にその本数に到達した人を優先し、さらに同時ならID順。0本の記録は掲載しない。
+- 初回は匿名の「糠の旅人」名を自動発行。ランキング画面で表示名を1〜16文字に変更できる。表示名と累計本数は一般公開される。
+- 変更のある記録を約15秒ごとに同期し、ランキングを開いたときも同期・取得する。通信に失敗してもローカルの本数は残り、再接続・次回アクセス時に再送する。
+- 以前の保存機能がない版で失われた本数は復元できない。この更新以降の記録を保存する。
+- 保存できないブラウザーや通信障害では、ランキング・休憩画面に状態を表示する。
 
 ## 実装
 
@@ -47,7 +56,7 @@ GitHub：[kakigouri3270/kotowaza_game_series](https://github.com/kakigouri3270/k
 - 視線と糠の交点・距離・縁の遮蔽判定による自由配置。
 - 糠ごとの滑らかな沈み込み（いつもの糠は約5〜6秒、さらさらは約3秒、ねばねばは約9〜11秒）、個別の傾き・揺れ・粒・くぼみ。長時間プレイでも釘の描画資源を解放する。
 - Web Audioで柔らかな刺し込み音を合成する。音はユーザー操作後に開始する。
-- React / Three.js。一般公開版はViteで静的ファイルへビルドし、Cloudflare Workers Static Assetsで配信する。ログインやサーバー・DBは不要。
+- React / Three.js。Viteで静的アセットを生成し、Cloudflare Workers Static Assetsで配信。専用WorkerとSQLite Durable Objectで累計ランキングを共有する。
 - 以前のVinext / Sites / D1記録とAPIのソースも保存しているが、一般公開版のビルドには含めない。
 - WebMCPはread_game_stateで位置・狙う糠場・本数・進捗を読み取る。以前のopen_rankingsは撤去。
 
@@ -60,11 +69,13 @@ npm ci
 npm run public:dev
 ```
 
-開発URLは起動時に表示される。現在の自由プレイにはDB初期化は不要。`npm run public:build` で公開用ファイルを生成し、`npm run public:preview` でビルド結果を確認できる。
+開発URLは起動時に表示される。Vite単体ではゲームとローカル保存のみ。APIを含む検証は `npm run public:build` 後に `npx wrangler dev --config wrangler.public.jsonc --local` を使う。データベースは自動初期化され、ローカル検証の記録は公開ランキングへ送られない。
 
 以前のSites版の開発コマンド `npm run dev` とビルド設定は、旧環境の再現用として残している。
 
 ## 検証
+
+累計保存・TOP10追加時：全19テストを通過。再訪時の本数と表示名、複数タブ、通信失敗、保存途中の終了、重複送信、TOP10順序、入力制限を検証。ローカルのWorker実行環境でも同期を確認し、PCと390px幅で表示名の保存・ランキング・釘刺し・再読み込みを確認。コンソールエラー0件。
 
 - npm test
 - npm run typecheck
@@ -85,6 +96,9 @@ npm run public:dev
 | `lib/nuka-scene.ts` | 3Dの部屋、手、釘、沈むモーション |
 | `lib/nuka-physics.ts` | 歩行、当たり判定、糠場、本数の計算 |
 | `lib/nuka-audio.ts` | 効果音 |
+| `lib/nuka-save.ts` | 即時保存・復元・複数タブの排他処理・同期 |
+| `worker/index.ts` | 公開API、SQLite Durable Object、累計TOP10 |
+| `components/nuka-ranking.tsx` | 累計ランキングと表示名の編集 |
 | `tests/nuka-physics.test.mjs` | 物理とカウントのテスト |
 | `docs/series/` | シリーズ企画と馬の構想 |
 | `docs/CLOUDFLARE.md` | 無料枠での公開と次回更新の手順 |

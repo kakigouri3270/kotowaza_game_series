@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeProgress } from "./nuka-save";
 import { BRAN_X, BRAN_Y, BRAN_Z, PLAYER_START, STATIONS, canPlaceNail, movePlayer, nailDepth, newProgress, recordNail, stationAt, newJumpState, startJump, stepJump, type Progress, type StationId } from "./nuka-physics";
 
 export type NukaState = {
@@ -18,11 +19,12 @@ export type NukaScene = {
   insert(): StationId | null;
   jump(): boolean;
   resetPlayer(): void;
+  restoreProgress(saved: Progress): void;
   getState(): NukaState;
   dispose(): void;
 };
 
-export function createNukaScene(host: HTMLElement, onState: (state: NukaState) => void): NukaScene {
+export function createNukaScene(host: HTMLElement, onState: (state: NukaState) => void, initialProgress: Progress = newProgress()): NukaScene {
   const world = new THREE.Scene();
   world.background = new THREE.Color("#b6b2a0");
   world.fog = new THREE.Fog("#c5c0aa", 19, 38);
@@ -191,7 +193,7 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
   const nails: Nail[] = [];
   const haloGeo = new THREE.RingGeometry(0.016, 0.04, 24); geometries.add(haloGeo);
   const scatterGeo = new THREE.IcosahedronGeometry(0.014, 0); geometries.add(scatterGeo);
-  let progress = newProgress();
+  let progress = initialProgress;
   let jumpState = newJumpState();
   let player = { ...PLAYER_START }, active = false, started = false, time = 0, lastInsert = -10, frame = 0, disposed = false;
   let previousTime = performance.now(), lastState = -1, walkTime = 0, touchX = 0, touchY = 0;
@@ -303,6 +305,7 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
     look(dx, dy) { if (!active) return; player.yaw -= dx * 0.0027; player.pitch = THREE.MathUtils.clamp(player.pitch - dy * 0.0027, -1.35, 1.25); },
     insert,
     jump,
+    restoreProgress(saved) { progress = mergeProgress(progress, saved); onState(getState()); },
     resetPlayer() { player = { ...PLAYER_START }; jumpState = newJumpState(); keys.clear(); keyStarted.clear(); keyRelease.clear(); touchX = touchY = 0; },
     getState,
     dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose()); grains.forEach(g => g.dispose()); nails.forEach(n => n.particles.dispose()); renderer.dispose(); renderer.domElement.remove(); },
