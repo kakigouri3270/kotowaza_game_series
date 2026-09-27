@@ -256,7 +256,7 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
       let sideways = Number(keys.has("KeyD")) - Number(keys.has("KeyA")) + touchX;
       const magnitude = Math.hypot(forward, sideways);
       if (magnitude > 1) { forward /= magnitude; sideways /= magnitude; }
-      const step = dt * (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 3.4 : 2.05);
+      const step = dt * (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 5.1 : 3.075);
       const next = movePlayer(player, (-Math.sin(player.yaw) * forward + Math.cos(player.yaw) * sideways) * step, (-Math.cos(player.yaw) * forward - Math.sin(player.yaw) * sideways) * step);
       const moved = Math.hypot(next.x - player.x, next.z - player.z); walkTime += moved * 7;
       Object.assign(player, next);
