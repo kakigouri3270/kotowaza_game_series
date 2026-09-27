@@ -21,6 +21,23 @@ export function stationAt(x: number, z: number) {
 export type Position = { x: number; z: number };
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 
+export type JumpState = { height: number; velocity: number; grounded: boolean };
+export const newJumpState = (): JumpState => ({ height: 0, velocity: 0, grounded: true });
+const JUMP_SPEED = 4.5;
+const GRAVITY = 15;
+
+export function startJump(state: JumpState): JumpState {
+  return state.grounded ? { height: 0, velocity: JUMP_SPEED, grounded: false } : state;
+}
+
+export function stepJump(state: JumpState, dt: number): JumpState {
+  if (state.grounded || dt <= 0) return state;
+  // Integrate the ballistic arc exactly so the height is independent of FPS.
+  const height = state.height + state.velocity * dt - 0.5 * GRAVITY * dt * dt;
+  const velocity = state.velocity - GRAVITY * dt;
+  return height <= 0 && velocity <= 0 ? newJumpState() : { height, velocity, grounded: false };
+}
+
 // Axis-by-axis collision lets the player slide along the table and walls.
 export function movePlayer(position: Position, dx: number, dz: number): Position {
   let { x, z } = position;

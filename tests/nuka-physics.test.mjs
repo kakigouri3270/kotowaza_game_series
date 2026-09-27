@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { movePlayer, canPlaceNail, nailDepth, PLAYER_START, BRAN_X, BRAN_Z, REACH, ROOM, STATIONS, newProgress, recordNail } from '../lib/nuka-physics.ts';
+import { movePlayer, canPlaceNail, nailDepth, PLAYER_START, BRAN_X, BRAN_Z, REACH, ROOM, STATIONS, newProgress, recordNail, newJumpState, startJump, stepJump } from '../lib/nuka-physics.ts';
 
 test('walks freely, collides with table even at large steps, slides along edge', () => {
   const free = movePlayer(PLAYER_START, 0.5, 0);
@@ -57,4 +57,32 @@ test('cumulative and per-station counts stay consistent beyond the tour goal', (
   assert.equal(progress.total,31);
   assert.equal(progress.byStation.sticky,11);
   assert.equal(progress.total,Object.values(progress.byStation).reduce((a,b)=>a+b,0));
+});
+
+test('a jump rises, rejects midair jumps, lands on the floor, and can jump again', () => {
+  const standing = newJumpState();
+  let state = startJump(standing);
+  assert.equal(state.grounded, false);
+  assert.equal(standing.grounded, true);
+  assert.strictEqual(stepJump(state, 0), state);
+  state = stepJump(state, 0.15);
+  assert.ok(state.height > 0.4 && state.velocity > 0);
+  assert.strictEqual(startJump(state), state);
+  state = stepJump(state, 0.3);
+  assert.ok(state.height > 0 && state.velocity < 0);
+  state = stepJump(state, 0.3);
+  assert.deepEqual(state, { height: 0, velocity: 0, grounded: true });
+  assert.deepEqual(stepJump(state, 10), standing);
+  assert.ok(startJump(state).velocity > 0);
+});
+
+test('jump height and landing stay consistent at different frame rates', () => {
+  for (const fps of [30, 60, 120]) {
+    let state = startJump(newJumpState());
+    for (let i = 0; i < fps * 0.3; i++) state = stepJump(state, 1 / fps);
+    assert.ok(Math.abs(state.height - 0.675) < 1e-9);
+    assert.ok(Math.abs(state.velocity) < 1e-9);
+    for (let i = 0; i < fps * 0.4; i++) state = stepJump(state, 1 / fps);
+    assert.deepEqual(state, newJumpState());
+  }
 });

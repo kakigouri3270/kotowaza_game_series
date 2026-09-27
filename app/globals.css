@@ -46,10 +46,11 @@ kbd { font:11px/1.3 monospace; padding:4px 6px; border:1px solid #e2e8c74d; bord
 .controls-hud { position:absolute; bottom:35px; left:40px; right:40px; display:flex; align-items:flex-end; justify-content:space-between; gap:20px; pointer-events:none; }
 .desktop-controls { display:flex; flex-wrap:wrap; align-items:center; gap:16px; font-size:12px; color:#e0e4cc; }
 .desktop-controls span { display:flex; gap:8px; align-items:center; }
-.insert-button { pointer-events:auto; height:54px; padding:0 22px; font-size:14px; gap:16px; color:#f6efd6; background:#263b30d9; backdrop-filter:blur(12px); border:1px solid #cbd3ac66; border-radius:4px; }
-.insert-button:hover { background:#3e5442; }
-.insert-button:disabled { opacity:.5; }
-.insert-button kbd { font-size:10px; }
+.action-buttons { display:flex; gap:10px; flex-shrink:0; }
+.insert-button, .jump-button { pointer-events:auto; height:54px; padding:0 22px; font-size:14px; gap:16px; color:#f6efd6; background:#263b30d9; backdrop-filter:blur(12px); border:1px solid #cbd3ac66; border-radius:4px; }
+.insert-button:hover, .jump-button:hover { background:#3e5442; }
+.insert-button:disabled, .jump-button:disabled { opacity:.5; }
+.insert-button kbd, .jump-button kbd { font-size:10px; }
 .nail-icon { display:block; width:12px; height:22px; border-top:2px solid currentColor; position:relative; }
 .nail-icon::after { content:""; position:absolute; top:0; left:5px; width:2px; height:21px; background:currentColor; clip-path:polygon(0 0,100% 0,100% 85%,50% 100%,0 85%); }
 .touch-move, .touch-look-hint { display:none; }
@@ -81,8 +82,8 @@ kbd { font:11px/1.3 monospace; padding:4px 6px; border:1px solid #e2e8c74d; bord
   .touch-move .up { grid-area:1/2; } .touch-move .left { grid-area:2/1; } .touch-move .right { grid-area:2/3; } .touch-move .down { grid-area:3/2; }
   .touch-move > span { grid-area:2/2; display:grid; place-items:center; color:#d1dabe80; }
   .touch-look-hint { display:block; position:absolute; bottom:170px; left:24px; color:#e4e6ce; text-shadow:0 1px 5px #29372a; font-size:10px; pointer-events:none; }
-  .insert-button { margin-bottom:18px; }
-  .insert-button kbd { display:none; }
+  .action-buttons { flex-direction:column; gap:8px; margin-bottom:8px; }
+  .insert-button kbd, .jump-button kbd { display:none; }
 }
 @media (max-width:540px) {
   .game-shell { min-height:520px; }
@@ -101,7 +102,7 @@ kbd { font:11px/1.3 monospace; padding:4px 6px; border:1px solid #e2e8c74d; bord
   .intro-controls { margin-top:22px; gap:15px; font-size:10px; }
   .intro-footer { left:25px; right:25px; bottom:24px; font-size:9px; }
   .intro-footer span:last-child { display:none; }
-  .insert-button { padding:0 18px; height:58px; gap:12px; }
+  .insert-button, .jump-button { padding:0 18px; height:52px; gap:12px; }
   .game-dialog { padding:24px; }
   .pause-actions { flex-direction:column; }
 }

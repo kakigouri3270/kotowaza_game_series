@@ -1,10 +1,10 @@
 import * as THREE from "three";
-import { BRAN_X, BRAN_Y, BRAN_Z, PLAYER_START, STATIONS, canPlaceNail, movePlayer, nailDepth, newProgress, recordNail, stationAt, type Progress, type StationId } from "./nuka-physics";
+import { BRAN_X, BRAN_Y, BRAN_Z, PLAYER_START, STATIONS, canPlaceNail, movePlayer, nailDepth, newProgress, recordNail, stationAt, newJumpState, startJump, stepJump, type Progress, type StationId } from "./nuka-physics";
 
 export type NukaState = {
   active: boolean; aimed: boolean;
   target: { x: number; z: number } | null;
-  player: { x: number; z: number; yaw: number; pitch: number };
+  player: { x: number; y: number; z: number; yaw: number; pitch: number; grounded: boolean };
   visibleNails: number;
   progress: Progress;
   station: StationId | null;
@@ -16,6 +16,7 @@ export type NukaScene = {
   setTouchMove(x: number, y: number): void;
   look(dx: number, dy: number): void;
   insert(): StationId | null;
+  jump(): boolean;
   resetPlayer(): void;
   getState(): NukaState;
   dispose(): void;
@@ -191,6 +192,7 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
   const haloGeo = new THREE.RingGeometry(0.016, 0.04, 24); geometries.add(haloGeo);
   const scatterGeo = new THREE.IcosahedronGeometry(0.014, 0); geometries.add(scatterGeo);
   let progress = newProgress();
+  let jumpState = newJumpState();
   let player = { ...PLAYER_START }, active = false, started = false, time = 0, lastInsert = -10, frame = 0, disposed = false;
   let previousTime = performance.now(), lastState = -1, walkTime = 0, touchX = 0, touchY = 0;
   const keyStarted = new Map<string, number>(), keyRelease = new Map<string, number>();
@@ -200,7 +202,7 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
   let target: THREE.Vector3 | null = null;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function updateAim() {
-    if (active) { camera.position.set(player.x, 1.68, player.z); camera.rotation.set(player.pitch, player.yaw, 0); }
+    if (active) { camera.position.set(player.x, 1.68 + jumpState.height, player.z); camera.rotation.set(player.pitch, player.yaw, 0); }
     camera.updateMatrixWorld(); ray.setFromCamera(center, camera);
     const hit = ray.ray.intersectPlane(plane, intersection);
     target = active && hit && canPlaceNail(hit.x, hit.z, camera.position.distanceTo(hit)) ? intersection : null;
@@ -212,9 +214,15 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
     if (target) marker.position.set(target.x, BRAN_Y + 0.022, target.z);
   }
   function getState(): NukaState {
-    return { active, aimed: !!target, progress, station: target ? stationAt(target.x, target.z)?.id ?? null : null, target: target ? { x: +target.x.toFixed(3), z: +target.z.toFixed(3) } : null, player: { ...player }, visibleNails: nails.filter(n => n.group.position.y + 0.47 > BRAN_Y).length, nails: nails.map(n => ({ x: +n.group.position.x.toFixed(3), z: +n.group.position.z.toFixed(3), depth: +(BRAN_Y - n.group.position.y).toFixed(3) })) };
+    return { active, aimed: !!target, progress, station: target ? stationAt(target.x, target.z)?.id ?? null : null, target: target ? { x: +target.x.toFixed(3), z: +target.z.toFixed(3) } : null, player: { ...player, y: jumpState.height, grounded: jumpState.grounded }, visibleNails: nails.filter(n => n.group.position.y + 0.47 > BRAN_Y).length, nails: nails.map(n => ({ x: +n.group.position.x.toFixed(3), z: +n.group.position.z.toFixed(3), depth: +(BRAN_Y - n.group.position.y).toFixed(3) })) };
   }
   function removeNail(n: Nail) { world.remove(n.group, n.halo, n.particles); n.haloMat.dispose(); materials.delete(n.haloMat); n.particles.dispose(); }
+  function jump() {
+    if (!active || !jumpState.grounded) return false;
+    jumpState = startJump(jumpState);
+    onState(getState());
+    return true;
+  }
   function insert() {
     updateAim();
     if (!active || !target || time - lastInsert < 0.12) return null;
@@ -241,6 +249,7 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
     const dt = Math.min((now - previousTime) / 1000, 0.04); previousTime = now;
     if (active) {
       time += dt;
+      jumpState = stepJump(jumpState, dt);
       for (const [key, until] of keyRelease) if (time >= until) { keys.delete(key); keyRelease.delete(key); keyStarted.delete(key); }
       if (time >= touchRelease) { touchX = touchY = 0; touchRelease = Infinity; }
       let forward = Number(keys.has("KeyW")) - Number(keys.has("KeyS")) - touchY;
@@ -253,9 +262,9 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
       Object.assign(player, next);
       player.yaw += (Number(keys.has("ArrowLeft")) - Number(keys.has("ArrowRight"))) * dt * 1.25;
       player.pitch = THREE.MathUtils.clamp(player.pitch + (Number(keys.has("ArrowUp")) - Number(keys.has("ArrowDown"))) * dt, -1.35, 1.25);
-      camera.position.set(player.x, 1.68, player.z); camera.rotation.set(player.pitch, player.yaw, 0);
+      camera.position.set(player.x, 1.68 + jumpState.height, player.z); camera.rotation.set(player.pitch, player.yaw, 0);
       const thrust = Math.max(0, Math.sin(Math.min(1, (time - lastInsert) / 0.42) * Math.PI));
-      hand.position.set((0.3 - thrust * 0.18) * Math.min(1, camera.aspect), -0.23 - thrust * 0.03 + (reducedMotion ? 0 : Math.sin(walkTime) * Math.min(moved * 0.5, 0.008)), -0.43 - thrust * 0.25);
+      hand.position.set((0.3 - thrust * 0.18) * Math.min(1, camera.aspect), -0.23 - thrust * 0.03 + (reducedMotion ? 0 : Math.sin(walkTime) * Math.min(moved * 0.5, 0.008) - jumpState.velocity * 0.006), -0.43 - thrust * 0.25);
       hand.rotation.set(-0.2 - thrust * 0.5, -0.18, -0.12);
       held.visible = time - lastInsert > 0.26;
       for (let i = nails.length - 1; i >= 0; i--) {
@@ -293,7 +302,8 @@ export function createNukaScene(host: HTMLElement, onState: (state: NukaState) =
     },
     look(dx, dy) { if (!active) return; player.yaw -= dx * 0.0027; player.pitch = THREE.MathUtils.clamp(player.pitch - dy * 0.0027, -1.35, 1.25); },
     insert,
-    resetPlayer() { player = { ...PLAYER_START }; keys.clear(); keyStarted.clear(); keyRelease.clear(); touchX = touchY = 0; },
+    jump,
+    resetPlayer() { player = { ...PLAYER_START }; jumpState = newJumpState(); keys.clear(); keyStarted.clear(); keyRelease.clear(); touchX = touchY = 0; },
     getState,
     dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose()); grains.forEach(g => g.dispose()); nails.forEach(n => n.particles.dispose()); renderer.dispose(); renderer.domElement.remove(); },
   };

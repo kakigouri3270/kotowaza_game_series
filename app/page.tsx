@@ -14,6 +14,7 @@ export default function Home() {
   const [paused, setPaused] = useState(false), [muted, setMuted] = useState(false), [locked, setLocked] = useState(false);
   const [aimed, setAimed] = useState(false), [sceneError, setSceneError] = useState(""), [notice, setNotice] = useState("");
   const [inserted, setInserted] = useState(false);
+  const [grounded, setGrounded] = useState(true);
   const [progress, setProgress] = useState<Progress>(newProgress);
   const [station, setStation] = useState<StationId | null>(null);
   const [position, setPosition] = useState({ x: PLAYER_START.x, z: PLAYER_START.z, yaw: 0 });
@@ -44,6 +45,9 @@ export default function Home() {
     playingRef.current = false; setPlaying(false); setPaused(true); scene.current?.setActive(false); drag.current = null;
     if (document.pointerLockElement) document.exitPointerLock();
   }
+  function jump() {
+    if (playingRef.current) scene.current?.jump();
+  }
   function enter(mode = lookMode.current) {
     if (!ready) return;
     lookMode.current = mode; audio(); setStarted(true); setPaused(false);
@@ -63,14 +67,15 @@ export default function Home() {
     if (!value) audio();
     try { localStorage.setItem("nuka-muted", String(value)); } catch {}
   }
-  const actions = useRef({ insert, pause });
-  useEffect(() => { actions.current = { insert, pause }; });
+  const actions = useRef({ insert, pause, jump });
+  useEffect(() => { actions.current = { insert, pause, jump }; });
   useEffect(() => {
     // Let the introduction paint before creating the WebGL scene.
     const setupFrame = requestAnimationFrame(() => {
       try { const value = localStorage.getItem("nuka-muted") === "true"; setMuted(value); mutedRef.current = value; } catch {}
       try {
         scene.current = createNukaScene(mount.current!, (state: NukaState) => {
+          setGrounded(state.player.grounded);
           if (aimRef.current !== state.aimed) { aimRef.current = state.aimed; setAimed(state.aimed); }
           if (progressRef.current !== state.progress) { progressRef.current = state.progress; setProgress(state.progress); }
           if (stationRef.current !== state.station) { stationRef.current = state.station; setStation(state.station); }
@@ -87,7 +92,8 @@ export default function Home() {
       if (!playingRef.current || event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.code === "Escape") { event.preventDefault(); actions.current.pause(); return; }
       if (controls.has(event.code)) { event.preventDefault(); scene.current?.setKey(event.code, true); }
-      if ((event.code === "Space" || event.code === "KeyE") && !event.repeat) { event.preventDefault(); actions.current.insert(); }
+      if (event.code === "Space") { event.preventDefault(); if (!event.repeat) actions.current.jump(); }
+      if (event.code === "KeyE") { event.preventDefault(); if (!event.repeat) actions.current.insert(); }
     };
     const keyup = (event: KeyboardEvent) => scene.current?.setKey(event.code, false);
     const pointer = (event: MouseEvent) => { if (document.pointerLockElement && playingRef.current) scene.current?.look(event.movementX, event.movementY); };
@@ -119,7 +125,7 @@ export default function Home() {
     const lifecycle = new AbortController();
     const tool = {
       name: "read_game_state", title: "現在の作業部屋の状態",
-      description: "糠の回廊の位置、狙っている糠場、今回刺した釘の累計、3か所それぞれの本数、沈んでいる釘を読み取る。ランキングはありません。",
+      description: "糠の回廊の位置・ジャンプの高さと接地状態、狙っている糠場、今回刺した釘の累計、3か所それぞれの本数、沈んでいる釘を読み取る。ランキングはありません。",
       inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true },
       execute(input: unknown) {
         if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length) throw new Error("引数は空のオブジェクトにしてください。");
@@ -170,7 +176,7 @@ export default function Home() {
       <p>広い回廊を歩いて、三つの糠をめぐる。<br/>さらさら、ぬるぬる、ねばねば。<br/>まずは、それぞれに10本ずつ。</p>
       <Button className="enter-button" onClick={() => enter("mouse")} disabled={!ready}>{ready ? <>部屋に入る<ArrowUpRight size={20}/></> : <><Loader2 className="animate-spin"/>部屋を準備中…</>}</Button>
       <button className="drag-entry" onClick={() => enter("drag")} disabled={!ready}>ドラッグ操作で入る</button>
-      <div className="intro-controls"><span><kbd>W A S D</kbd>歩く</span><span><MousePointer2 size={15}/>見回す・刺す</span></div>
+      <div className="intro-controls"><span><kbd>W A S D</kbd>歩く</span><span><kbd>SPACE</kbd>ジャンプ</span><span><MousePointer2 size={15}/>見回す・刺す</span></div>
     </section>}
     {sceneError && <div className="error-panel" role="alert"><p>{sceneError}</p><Button onClick={() => location.reload()}>再読み込み</Button></div>}
     {playing && <>
@@ -194,7 +200,10 @@ export default function Home() {
           {([{ name: "前へ歩く", x: 0, y: -1, icon: <ArrowUp/>, css: "up" }, { name: "左へ歩く", x: -1, y: 0, icon: <ArrowLeft/>, css: "left" }, { name: "後ろへ歩く", x: 0, y: 1, icon: <ArrowDown/>, css: "down" }, { name: "右へ歩く", x: 1, y: 0, icon: <ArrowRight/>, css: "right" }]).map(d => <button key={d.css} className={d.css} aria-label={d.name} onPointerDown={e => moveDown(e, d.x, d.y)} onPointerUp={stopMove} onPointerCancel={stopMove} onLostPointerCapture={stopMove}>{d.icon}</button>)}
           <span><Move size={15}/></span>
         </div>
-        <Button className="insert-button" disabled={!aimed} onClick={insert}><span className="nail-icon" aria-hidden="true"/>釘を刺す<kbd>SPACE</kbd></Button>
+        <div className="action-buttons">
+          <Button className="jump-button" disabled={!grounded} onClick={jump}><ArrowUp size={18}/>ジャンプ<kbd>SPACE</kbd></Button>
+          <Button className="insert-button" disabled={!aimed} onClick={insert}><span className="nail-icon" aria-hidden="true"/>釘を刺す<kbd>E</kbd></Button>
+        </div>
       </div>
       <span className="touch-look-hint">画面をなぞって、見回す</span>
     </>}
@@ -206,9 +215,10 @@ export default function Home() {
         <div className="help-controls">
           <div><kbd>W A S D</kbd><span>回廊を歩く。Shiftを押すと早歩き。</span></div>
           <div><MousePointer2/><span>マウス、ドラッグ、または矢印キーで見回す</span></div>
-          <div><kbd>SPACE / E</kbd><span>中央の目印に釘を刺す。クリックでも。</span></div>
+          <div><kbd>SPACE</kbd><span>ジャンプ。歩きながらも跳べます。</span></div>
+          <div><kbd>E / クリック</kbd><span>中央の目印に釘を刺す。</span></div>
         </div>
-        <p className="help-note">地図の01・02・03の糠に10本ずつ刺してみましょう。沈む速さと音が違います。達成後も自由に遊べます。<br/>本数はこのプレイ中の累計です。釘が沈んでも、最初の位置に戻っても減りません。ページの再読み込みで0本に戻ります。<br/>スマートフォンは左の矢印で移動、画面をなぞって視点を動かします。</p>
+        <p className="help-note">地図の01・02・03の糠に10本ずつ刺してみましょう。沈む速さと音が違います。達成後も自由に遊べます。<br/>本数はこのプレイ中の累計です。釘が沈んでも、最初の位置に戻っても減りません。ページの再読み込みで0本に戻ります。<br/>スマートフォンは左の矢印で移動、画面をなぞって視点を動かし、右のボタンでジャンプ・釘刺し。着地するとまた跳べます。</p>
         <Button className="resume-button" onClick={() => enter()}><Play size={17}/>部屋に戻る</Button>
         <div className="pause-actions"><Button variant="outline" onClick={() => { scene.current?.resetPlayer(); enter("drag"); }}><RotateCcw size={16}/>糠の前に戻る</Button><Button variant="ghost" onClick={() => enter("drag")}>ドラッグ操作にする</Button></div>
       </DialogContent>
