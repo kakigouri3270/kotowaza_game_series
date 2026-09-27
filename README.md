@@ -2,7 +2,11 @@
 
 一人称で広い「糠の回廊」を歩き、好きな場所へ釘を刺す3Dブラウザーゲーム。2026-09-27更新。
 
-プレイURL：https://nuka-ni-kugi.kakigoori2000.chatgpt.site
+Cloudflareの無料の静的配信向けに、ログイン不要の一般公開ビルドを用意した。アカウント認証後に公開URLをここへ記載する。
+
+既存の本人限定プレビュー：https://nuka-ni-kugi.kakigoori2000.chatgpt.site
+
+[Cloudflareへの公開手順](docs/CLOUDFLARE.md) / [シリーズの企画一覧](docs/series/IDEAS.md) / [馬の耳に念仏の構想](docs/series/uma-no-mimi-ni-nenbutsu/CONCEPT.md)
 
 ## 遊び方
 
@@ -32,25 +36,42 @@
 - 視線と糠の交点・距離・縁の遮蔽判定による自由配置。
 - 糠ごとの滑らかな沈み込み（いつもの糠は約5〜6秒、さらさらは約3秒、ねばねばは約9〜11秒）、個別の傾き・揺れ・粒・くぼみ。長時間プレイでも釘の描画資源を解放する。
 - Web Audioで柔らかな刺し込み音を合成する。音はユーザー操作後に開始する。
-- React / Vinext、Cloudflare Workers。以前のD1記録とAPIは保存しているが、現在のゲームでは使用しない。
+- React / Three.js。一般公開版はViteで静的ファイルへビルドし、Cloudflare Workers Static Assetsで配信する。ログインやサーバー・DBは不要。
+- 以前のVinext / Sites / D1記録とAPIのソースも保存しているが、一般公開版のビルドには含めない。
 - WebMCPはread_game_stateで位置・狙う糠場・本数・進捗を読み取る。以前のopen_rankingsは撤去。
 
 ## 制作を続ける
 
 Node.js 22.13以上とnpmを使用。
 
-1. npm ci
-2. npm run dev
+```sh
+npm ci
+npm run public:dev
+```
 
-開発URLは起動時に表示される。現在の自由プレイにはDB初期化は不要。
+開発URLは起動時に表示される。現在の自由プレイにはDB初期化は不要。`npm run public:build` で公開用ファイルを生成し、`npm run public:preview` でビルド結果を確認できる。
+
+以前のSites版の開発コマンド `npm run dev` とビルド設定は、旧環境の再現用として残している。
 
 ## 検証
 
-- node --experimental-strip-types --test tests/nuka-physics.test.mjs
-- node node_modules/typescript/bin/tsc --noEmit
-- node node_modules/eslint/bin/eslint.js app/page.tsx app/layout.tsx lib/nuka-scene.ts lib/nuka-physics.ts lib/nuka-audio.ts
-- npm run build
+- npm test
+- npm run typecheck
+- npm run public:build
+- npx wrangler deploy --config wrangler.public.jsonc --dry-run
 
 ブラウザーで3か所への徒歩移動、各10本の達成、達成後の加算、沈下後・位置リセット後の累計維持、糠以外では加算しないことを確認済み。390px幅で本数・地図・タッチ用ボタンの表示と挿入も確認。物理と累計のテストは6件。
 
-公開先は既存のSitesプロジェクトを継続し、閲覧範囲は本人限定を維持する。
+2026-09-27：一般公開用ビルドでも認証なしの入室、3D描画、釘の挿入と加算をブラウザーで確認。型確認、テスト6件、静的ビルド、Cloudflareのデプロイ事前検証を通過。
+
+## コードの場所
+
+| 場所 | 内容 |
+| --- | --- |
+| `app/page.tsx` / `app/globals.css` | ゲーム画面・操作・表示 |
+| `lib/nuka-scene.ts` | 3Dの部屋、手、釘、沈むモーション |
+| `lib/nuka-physics.ts` | 歩行、当たり判定、糠場、本数の計算 |
+| `lib/nuka-audio.ts` | 効果音 |
+| `tests/nuka-physics.test.mjs` | 物理とカウントのテスト |
+| `docs/series/` | シリーズ企画と馬の構想 |
+| `docs/CLOUDFLARE.md` | 無料枠での公開と次回更新の手順 |
