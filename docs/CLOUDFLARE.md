@@ -47,4 +47,6 @@ npm run deploy:cloudflare
 
 同じリポジトリでゲームを修正し、検証後に `npm run deploy:cloudflare` で更新する。Gitのpushだけでは自動デプロイされない。
 
+GitHubの保存先は [kakigouri3270/kotowaza_game_series](https://github.com/kakigouri3270/kotowaza_game_series)。このチェックアウトの `main` は `github/main` を追跡し、`git push` でソースを保存できる。2026-09-27に、既存の初期コミットとゲームの制作履歴を残してpush済み。
+
 将来、ランキングやAPIを公開する場合は、認証、不正送信対策、DBとWorkersの無料枠を別途設計する。現状の古いAPIをそのまま公開しない。
